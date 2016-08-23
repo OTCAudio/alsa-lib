@@ -17,8 +17,12 @@
 */
 
 #include <sys/stat.h>
+#include <libgen.h>
 #include "list.h"
 #include "tplg_local.h"
+
+static int tplg_load_config(const char *file, snd_config_t **cfg);
+static int tplg_parse_config(snd_tplg_t *tplg, snd_config_t *cfg, const char *base_dir);
 
 /*
  * Parse compound
@@ -58,12 +62,157 @@ int tplg_parse_compound(snd_tplg_t *tplg, snd_config_t *cfg,
 	return err;
 }
 
-static int tplg_parse_config(snd_tplg_t *tplg, snd_config_t *cfg)
+/* add the child config to the list for final freeing */
+static int add_child_config(snd_tplg_t *tplg, snd_config_t *cfg)
+{
+	struct tplg_config *child;
+
+	child = calloc(1, sizeof(*child));
+	if (!child)
+		return -ENOMEM;
+
+	child->cfg = cfg;
+	list_add_tail(&child->list, &tplg->child_cfg_list);
+
+	return 0;
+}
+
+
+/* Free all child configs in the list */
+static void free_child_configs(snd_tplg_t *tplg)
+{
+	struct list_head *pos, *npos, *base;
+	struct tplg_config *child;
+
+	base = &tplg->child_cfg_list;
+	list_for_each_safe(pos, npos, base) {
+		child = list_entry(pos, struct tplg_config, list);
+		list_del(&child->list);
+		snd_config_delete(child->cfg);
+		free(child);
+	}
+}
+
+/* Parse the config of an included file
+ */
+static int parse_included_file(snd_tplg_t *tplg, snd_config_t *cfg,
+			       const char *dir, const char *base_dir)
+{
+	snd_config_iterator_t i, next;
+	snd_config_t *n, *child;
+	const char *file;
+	char *full_path = NULL, *child_dir = NULL;
+	int err = 0, pos;
+
+	full_path = calloc(1, PATH_MAX + 1);
+	if (!full_path)
+		return -ENOMEM;
+
+	/* cat the base directory (directory of the base conf file) and
+	 * the child directory.
+	 */
+	strncpy(full_path, base_dir, PATH_MAX);
+	strcat(full_path, "/");
+	strcat(full_path, dir);
+	strcat(full_path, "/");
+	pos = strlen(full_path);
+
+	snd_config_for_each(i, next, cfg) {
+
+		n = snd_config_iterator_entry(i);
+		if (snd_config_get_string(n, &file) < 0)
+			continue;
+
+		/* get full path of the included file */
+		full_path[pos] = 0;
+		strcat(full_path, file);
+		/* load config from the included file */
+		err = tplg_load_config(full_path, &child);
+		if (err < 0) {
+			SNDERR("error: failed to load topology file %s\n",
+				full_path);
+			goto out;
+		}
+
+		/* store the config as a child */
+		err = add_child_config(tplg, child);
+		if (err < 0) {
+			SNDERR("error: failed to add child config of file %s\n",
+				full_path);
+			goto out;
+		}
+
+		/* Set the base directory to parse the child config.
+		  * Back up the path since dirname() may modify the input.
+		  */
+		child_dir = strdup(full_path);
+		if (!child_dir) {
+			err = -ENOMEM;
+			goto out;
+		}
+
+		/* parse topology items in the child confg */
+		err = tplg_parse_config(tplg, child, dirname(child_dir));
+		free(child_dir);
+		if (err < 0) {
+			SNDERR("error: failed to parse config of file %s\n",
+				full_path);
+			goto out;
+		}
+	}
+
+out:
+	if (full_path)
+		free(full_path);
+
+	return err;
+}
+
+static int tplg_parse_included_file(snd_tplg_t *tplg, snd_config_t *cfg,
+	void *private)
+{
+	snd_config_iterator_t i, next;
+	snd_config_t *n;
+	int err;
+	const char *base_dir, *dir;
+
+	if (snd_config_get_type(cfg) != SND_CONFIG_TYPE_COMPOUND) {
+		SNDERR("error: compound is expected for include definition\n");
+		return -EINVAL;
+	}
+
+	/* directory of the included files */
+	base_dir = (const char *)private;
+	snd_config_get_id(cfg, &dir);
+
+	snd_config_for_each(i, next, cfg) {
+		const char *id;
+
+		n = snd_config_iterator_entry(i);
+		if (snd_config_get_id(n, &id) < 0)
+			continue;
+
+		if (strcmp(id, "include") == 0) {
+			err = parse_included_file(tplg, n, dir, base_dir);
+			if (err < 0) {
+				SNDERR("error: failed to parse include %s\n",
+					dir);
+				return err;
+			}
+		}
+	}
+
+	return 0;
+}
+
+static int tplg_parse_config(snd_tplg_t *tplg, snd_config_t *cfg, const char *base_dir)
 {
 	snd_config_iterator_t i, next;
 	snd_config_t *n;
 	const char *id;
 	int err;
+
+	printf("tplg_parse_config: BASE dir is %s\n", base_dir);
 
 	if (snd_config_get_type(cfg) != SND_CONFIG_TYPE_COMPOUND) {
 		SNDERR("error: compound type expected at top level");
@@ -222,6 +371,15 @@ static int tplg_parse_config(snd_tplg_t *tplg, snd_config_t *cfg)
 			continue;
 		}
 
+		if (strcmp(id, "SectionInclude") == 0) {
+			err = tplg_parse_compound(tplg, n,
+						  tplg_parse_included_file,
+						  (void *)base_dir);
+			if (err < 0)
+				return err;
+			continue;
+		}
+
 		SNDERR("error: unknown section %s\n", id);
 	}
 	return 0;
@@ -318,6 +476,7 @@ int snd_tplg_build_file(snd_tplg_t *tplg, const char *infile,
 	const char *outfile)
 {
 	snd_config_t *cfg = NULL;
+	char *base_dir, *infile_bak = NULL;
 	int err = 0;
 
 	tplg->out_fd =
@@ -335,7 +494,18 @@ int snd_tplg_build_file(snd_tplg_t *tplg, const char *infile,
 		goto out_close;
 	}
 
-	err = tplg_parse_config(tplg, cfg);
+	/* Set the base directory from the config file path. Path of included
+	 * topology config files is relative to this base. Get dirname on the
+	 * duplicated path because dirname() can modify input.
+	 */
+	infile_bak = strndup(infile, PATH_MAX);
+	if (!infile_bak) {
+		err = -ENOMEM;
+		goto out;
+	}
+	base_dir = dirname(infile_bak);
+
+	err = tplg_parse_config(tplg, cfg, base_dir);
 	if (err < 0) {
 		SNDERR("error: failed to parse topology\n");
 		goto out;
@@ -355,6 +525,9 @@ int snd_tplg_build_file(snd_tplg_t *tplg, const char *infile,
 
 out:
 	snd_config_delete(cfg);
+	if (infile_bak)
+		free(infile_bak);
+
 out_close:
 	close(tplg->out_fd);
 	return err;
@@ -465,6 +638,7 @@ snd_tplg_t *snd_tplg_new(void)
 	if (!tplg)
 		return NULL;
 
+	INIT_LIST_HEAD(&tplg->child_cfg_list);
 	tplg->manifest.size = sizeof(struct snd_soc_tplg_manifest);
 
 	INIT_LIST_HEAD(&tplg->tlv_list);
@@ -514,6 +688,8 @@ void snd_tplg_free(snd_tplg_t *tplg)
 	tplg_elem_free_list(&tplg->tuple_list);
 	tplg_elem_free_list(&tplg->cmpnt_list);
 	tplg_elem_free_list(&tplg->hw_cfg_list);
+
+	free_child_configs(tplg);
 
 	free(tplg);
 }

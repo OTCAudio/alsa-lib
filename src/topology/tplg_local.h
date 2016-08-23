@@ -48,6 +48,9 @@ struct snd_tplg {
 	/* out file */
 	int out_fd;
 
+	/* child configs of included files */
+	struct list_head child_cfg_list;
+
 	int verbose;
 	unsigned int version;
 
@@ -172,6 +175,12 @@ struct tplg_elem {
 	struct list_head list; /* list of all elements with same type */
 
 	void (*free)(void *obj);
+};
+
+/* child topology config from an included file */
+struct tplg_config {
+	snd_config_t *cfg;
+	struct list_head list; /* list of all child configs */
 };
 
 struct map_elem {

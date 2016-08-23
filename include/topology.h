@@ -650,6 +650,30 @@ extern "C" {
  *	data "name"			# optional private data
  * }
  * </pre>
+ *
+ * <h4>Include other files</h4>
+ * User can include a list of files by SectionInclude in the text config file.
+ * This allows user to define common info in separate files (e.g. vendor
+ * tokens, tuples) and share them for multiple platforms, by including
+ * them. This can save the total file size and make maintenance easier.
+ * <br><br>
+ *
+ * The directory of a configuration file is the base directory for its
+ * included files. <br><br>
+ *
+ * The order of the included files need not to be same as their
+ * dependencies, since the tool will load them all before parsing their
+ * dependencies.
+ *
+ * <pre>
+ * SectionInclude."name" {
+ *	include [
+ *		"relative path of 1st included file"
+ *		"relative path of 2nd included file"
+ *		...
+ *	]
+ * }
+ * </pre>
  */
 
 /** Maximum number of channels supported in one control */
