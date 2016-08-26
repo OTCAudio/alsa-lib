@@ -1,6 +1,14 @@
 # Use case Configuration for Nexus 7
 # Adapted to Ubuntu Touch by David Henningsson <david.henningsson@canonical.com> and Zedong <zedong.chen@intel.com>
 
+
+SectionInclude."Codecs" {
+	Include [
+		"rt286"   
+	]
+}
+
+
 SectionVerb {
 
 	EnableSequence [
