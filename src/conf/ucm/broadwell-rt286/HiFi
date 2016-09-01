@@ -79,8 +79,8 @@ SectionDevice."Speaker" {
 	}
 }
 
-SectionDevice."Handset" {
-	Comment "Handset Microphone"
+SectionDevice."Headset" {
+	Comment "headset Microphone"
 
 	ConflictingDevice [
 		"Mainmic"
@@ -90,7 +90,7 @@ SectionDevice."Handset" {
 		cdev "hw:broadwellrt286"
 
 		# this runs rt286 enable sequence
-		enadev "RT286.Handset"
+		enadev "RT286.Headset"
 	]
 
 	DisableSequence [
