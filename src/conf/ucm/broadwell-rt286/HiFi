@@ -37,14 +37,14 @@ SectionDevice."Headphones" {
 		cset "name='Master Playback Volume' 30"
 		
 		# this runs rt286 enable sequence
-		enadev "RT286.Headphones"
+		enable "RT286.Headphones"
 	]
 
 	DisableSequence [
 		cdev "hw:broadwellrt286"
 		
 		# this runs rt286 disable sequence
-		disdev "RT286.Headphones"	
+		disable "RT286.Headphones"	
 	]
 
 	Value {
@@ -65,13 +65,13 @@ SectionDevice."Speaker" {
 	EnableSequence [
 		cdev "hw:broadwellrt286"
 		# this runs rt286 enable sequence
-		enadev "RT286.Speaker"
+		enable "RT286.Speaker"
 	]
 
 	DisableSequence [
 		cdev "hw:broadwellrt286"
 		# this runs rt286 disenable sequence
-		disdev "RT286.Speaker"
+		disable "RT286.Speaker"
 	]
 
 	Value {
@@ -90,13 +90,13 @@ SectionDevice."Headset" {
 		cdev "hw:broadwellrt286"
 
 		# this runs rt286 enable sequence
-		enadev "RT286.Headset"
+		enable "RT286.Headset"
 	]
 
 	DisableSequence [
 		cdev "hw:broadwellrt286"
 		# this runs rt286 disenable sequence
-		disdev "RT286.Handset"
+		disable "RT286.Headset"
 	]
 
 	Value {
@@ -118,13 +118,13 @@ SectionDevice."Mainmic" {
 		cdev "hw:broadwellrt286"
 
 		# this runs rt286 enable sequence
-		enadev "RT286.Mainmic"
+		enable "RT286.Mainmic"
 	]
 
 	DisableSequence [
 		cdev "hw:broadwellrt286"
 		# this runs rt286 disenable sequence
-		disdev "RT286.Mainmic"
+		disable "RT286.Mainmic"
 	]
 
 	Value {
