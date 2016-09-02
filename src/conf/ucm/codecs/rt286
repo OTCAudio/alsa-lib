@@ -45,7 +45,7 @@ SectionDevice."RT286.Speaker" {
 	}
 }
 
-SectionDevice."RT286.Handset" {
+SectionDevice."RT286.Headset" {
 
 	EnableSequence [
 		cset "name='Mic Capture Volume' 28"
