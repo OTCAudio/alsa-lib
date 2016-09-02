@@ -111,7 +111,7 @@ SectionDevice."Mainmic" {
 	Comment "Main Microphone"
 
 	ConflictingDevice [
-		"Handset"
+		"Headset"
 	]
 
 	EnableSequence [
