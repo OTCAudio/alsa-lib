@@ -232,6 +232,10 @@ void uc_mgr_free_verb(snd_use_case_mgr_t *uc_mgr)
 void uc_mgr_free(snd_use_case_mgr_t *uc_mgr)
 {
 	uc_mgr_free_verb(uc_mgr);
+
+	/* zedong*/
+	free_child_configs(uc_mgr);
+
 	free(uc_mgr->card_name);
 	free(uc_mgr);
 }

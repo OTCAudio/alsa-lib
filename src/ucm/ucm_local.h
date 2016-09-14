@@ -184,6 +184,10 @@ struct snd_use_case_mgr {
 	/* use case verb, devices and modifier configs parsed from files */
 	struct list_head verb_list;
 
+	/* zedong child configs of included files */
+	struct list_head child_cfg_list;
+
+
 	/* default settings - sequence */
 	struct list_head default_list;
 
@@ -201,6 +205,12 @@ struct snd_use_case_mgr {
 	/* change to list of ctl handles */
 	snd_ctl_t *ctl;
 	char *ctl_dev;
+};
+
+/* zedong child ucm config from an included file */
+struct ucm_config {
+	snd_config_t *cfg;
+	// struct list_head list; /* list of all child configs */
 };
 
 #define uc_error SNDERR

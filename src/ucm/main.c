@@ -851,6 +851,8 @@ int snd_use_case_mgr_open(snd_use_case_mgr_t **uc_mgr,
 	mgr = calloc(1, sizeof(snd_use_case_mgr_t));
 	if (mgr == NULL)
 		return -ENOMEM;
+	/*zedong */
+	INIT_LIST_HEAD(&mgr->child_cfg_list);
 	INIT_LIST_HEAD(&mgr->verb_list);
 	INIT_LIST_HEAD(&mgr->default_list);
 	INIT_LIST_HEAD(&mgr->value_list);

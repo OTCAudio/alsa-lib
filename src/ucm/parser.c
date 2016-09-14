@@ -165,6 +165,262 @@ static int parse_compound(snd_use_case_mgr_t *uc_mgr, snd_config_t *cfg,
 	return 0;
 }
 
+/*zedong Parse the config of an included file
+ */
+static int parse_included_file(snd_use_case_mgr_t *uc_mgr, snd_config_t *cfg,
+			       const char *dir, const char *base_dir)
+{
+	snd_config_iterator_t i, next;
+	snd_config_t *n, *child;
+	const char *file;
+	char *full_path = NULL, *child_dir = NULL;
+	int err = 0, pos;
+
+	full_path = calloc(1, PATH_MAX + 1);
+	if (!full_path)
+		return -ENOMEM;
+
+	/* cat the base directory (directory of the base conf file) and
+	 * the child directory.
+	 */
+	strncpy(full_path, base_dir, PATH_MAX);
+	strcat(full_path, "/");
+	pos = strlen(full_path);
+
+	snd_config_for_each(i, next, cfg) {
+
+		n = snd_config_iterator_entry(i);
+		if (snd_config_get_string(n, &file) < 0)
+			continue;
+
+		/* get full path of the included file */
+		full_path[pos] = 0;
+		strcat(full_path, file);
+		/* load config from the included file */
+		/*err = uc_mgr_config_load(full_path, &cfg);
+		if (err < 0) {
+			SNDERR("error: failed to load ucm file %s\n",
+				full_path);
+			goto out;
+		}
+		*/
+		/* store the config as a child */
+		/*err = add_child_config(uc_mgr, child);
+		if (err < 0) {
+			SNDERR("error: failed to add child config of file %s\n",
+				full_path);
+			goto out;
+		}
+		*/
+		/* Set the base directory to parse the child config.
+		  * Back up the path since dirname() may modify the input.
+		  */
+		child_dir = strdup(full_path);
+		if (!child_dir) {
+			err = -ENOMEM;
+			goto out;
+		}
+
+		/*zedong parse ucm items in the child confg */
+		err = parse_include_conf(uc_mgr, child, dirname(child_dir));
+		free(child_dir);
+		if (err < 0) {
+			SNDERR("error: failed to parse config of file %s\n",
+				full_path);
+			goto out;
+		}
+	}
+
+out:
+	if (full_path)
+		free(full_path);
+
+	return err;
+}
+
+/*
+ * zedong Parse  include conf.
+ *
+ * This file contains the following :-
+ *  o Verb enable and disable sequences.
+ *  o Supported Device enable and disable sequences for verb.
+ *  o Supported Modifier enable and disable sequences for verb
+ *  o Optional QoS for the verb and modifiers.
+ *  o Optional PCM device ID for verb and modifiers
+ *  o Alias kcontrols IDs for master and volumes and mutes.
+ */
+static int parse_include_conf(snd_use_case_mgr_t *uc_mgr,
+			   snd_config_t *cfg,const char *file)
+{
+	snd_config_iterator_t i, next;
+	snd_config_t *n;
+	struct use_case_verb *child;
+	//char filename[MAX_FILE];
+	//char *env = getenv(ALSA_CONFIG_UCM_VAR);
+	int err;
+
+	/* allocate verb */
+	child = calloc(1, sizeof(struct use_case_verb));
+	if (verb == NULL)
+		return -ENOMEM;
+	INIT_LIST_HEAD(&child->enable_list);
+	INIT_LIST_HEAD(&child->disable_list);
+	INIT_LIST_HEAD(&child->transition_list);
+	INIT_LIST_HEAD(&child->device_list);
+	INIT_LIST_HEAD(&child->modifier_list);
+	INIT_LIST_HEAD(&child->value_list);
+	list_add_tail(&child->list, &uc_mgr->child_cfg_list);
+	//if (use_case_name == NULL)
+		//return -EINVAL;
+	//verb->name = strdup(use_case_name);
+	//if (verb->name == NULL)
+	//	return -ENOMEM;
+
+	//if (comment != NULL) {
+	//	verb->comment = strdup(comment);
+	//	if (verb->comment == NULL)
+	//		return -ENOMEM;
+	//}
+
+	/* open Verb file for reading */
+	//snprintf(filename, sizeof(filename), "%s/%s/%s",
+	//	env ? env : ALSA_USE_CASE_DIR,
+	//	uc_mgr->card_name, file);
+	//filename[sizeof(filename)-1] = '\0';
+	
+	err = uc_mgr_config_load(full_path, &cfg);
+	if (err < 0) {
+		uc_error("error: failed to open include file %s : %d",
+			full_path, -errno);
+		return err;
+	}
+
+	/* parse include config sections */
+	snd_config_for_each(i, next, cfg) {
+		const char *id;
+		n = snd_config_iterator_entry(i);
+		if (snd_config_get_id(n, &id) < 0)
+			continue;
+
+		/* find verb section and parse it */
+		if (strcmp(id, "SectionVerb") == 0) {
+			err = parse_verb(uc_mgr, child, n);
+			if (err < 0) {
+				uc_error("error: %s failed to parse child",
+						file);
+				return err;
+			}
+			continue;
+		}
+
+		/* find device sections and parse them */
+		if (strcmp(id, "SectionDevice") == 0) {
+			err = parse_compound(uc_mgr, n,
+						parse_device_name, child, NULL);
+			if (err < 0) {
+				uc_error("error: %s failed to parse device",
+						file);
+				return err;
+			}
+			continue;
+		}
+
+		/* find modifier sections and parse them */
+		if (strcmp(id, "SectionModifier") == 0) {
+			err = parse_compound(uc_mgr, n,
+					     parse_modifier_name, child, NULL);
+			if (err < 0) {
+				uc_error("error: %s failed to parse modifier",
+						file);
+				return err;
+			}
+			continue;
+		}
+		
+		/* zedong find include sections and parse them */
+		if (strcmp(id, "SectionInclude") == 0) {
+			err = parse_compound(uc_mgr, n,
+					     ucm_parse_include_file, child, NULL);
+			if (err < 0) {
+				uc_error("error: %s failed to parse include",
+						file);
+				return err;
+			}
+			continue;
+		}
+	}
+
+	/* use case verb must have at least 1 device */
+	if (list_empty(&verb->device_list)) {
+		uc_error("error: no use case device defined", file);
+		return -EINVAL;
+	}
+	return 0;
+}
+
+
+/* zedong Free all child configs in the list */
+static void free_child_configs(snd_use_case_mgr_t *uc_mgr)
+{
+	struct list_head *pos, *npos;
+	struct use_case_verb *verb;
+
+	list_for_each_safe(pos, npos, &uc_mgr->child_cfg_list) {
+		verb = list_entry(pos, struct use_case_verb, list);
+		free(verb->name);
+		free(verb->comment);
+		uc_mgr_free_sequence(&verb->enable_list);
+		uc_mgr_free_sequence(&verb->disable_list);
+		uc_mgr_free_transition(&verb->transition_list);
+		uc_mgr_free_value(&verb->value_list);
+		uc_mgr_free_device(&verb->device_list);
+		uc_mgr_free_modifier(&verb->modifier_list);
+		list_del(&verb->list);
+		free(verb);
+	}
+}
+
+/*zedong Parse all the include file */
+static int ucm_parse_include_file(snd_use_case_mgr_t *uc_mgr, snd_config_t *cfg, void *data1, void *data2)
+{
+	snd_config_iterator_t i, next;
+	snd_config_t *n;
+	//zedong struct use_case_verb *verb;
+	snd_config_t *cfg;
+	char *env = getenv(ALSA_CONFIG_UCM_VAR);
+	int err;
+	const char *base_dir, *dir;
+
+	if (snd_config_get_type(cfg) != SND_CONFIG_TYPE_COMPOUND) {
+		SNDERR("error: compound is expected for include definition\n");
+		return -EINVAL;
+	}
+
+	/* directory of the included files */
+	base_dir = env ? env : ALSA_USE_CASE_DIR;
+	snd_config_get_id(cfg, &dir);
+
+	snd_config_for_each(i, next, cfg) {
+		const char *id;
+
+		n = snd_config_iterator_entry(i);
+		if (snd_config_get_id(n, &id) < 0)
+			continue;
+
+		if (strcmp(id, "include") == 0) {
+			err = parse_included_file(uc_mgr, n, dir, base_dir);
+			if (err < 0) {
+				SNDERR("error: failed to parse include %s\n",
+					dir);
+				return err;
+			}
+		}
+	}
+
+	return 0;
+}
+
+
 static int strip_legacy_dev_index(char *name)
 {
 	char *dot = strchr(name, '.');
@@ -258,6 +514,8 @@ static int parse_sequence(snd_use_case_mgr_t *uc_mgr ATTRIBUTE_UNUSED,
 	snd_config_t *n;
 	int err, idx = 0;
 	const char *cmd = NULL;
+	/*zedong*/
+	const char * SectionDecice_include_name = NULL;
 
 	if (snd_config_get_type(cfg) != SND_CONFIG_TYPE_COMPOUND) {
 		uc_error("error: compound is expected for sequence definition");
@@ -305,6 +563,33 @@ static int parse_sequence(snd_use_case_mgr_t *uc_mgr ATTRIBUTE_UNUSED,
 			}
 			continue;
 		}
+
+		/*zedong */
+		if (strcmp(cmd, "enadev") == 0) {
+			curr->type = SEQUENCE_ELEMENT_TYPE_CSET;
+			err = parse_string(n, &SectionDecice_include_name);
+			if (err < 0) {
+				uc_error("error: cset requires a string!");
+				return err;
+			}
+
+			err = parse_include_dev(uc_mgr,n,cmd,
+					SectionDecice_include_name,&cur);
+			continue;
+		}
+
+		/*zedong*/
+		if (strcmp(cmd, "disdev") == 0) {
+			curr->type = SEQUENCE_ELEMENT_TYPE_CSET;
+			err = parse_string(n, &SectionDecice_include_name);
+			if (err < 0) {
+				uc_error("error: cset requires a string!");
+				return err;
+			}
+			continue;
+		}
+		
+
 
 		if (strcmp(cmd, "cset-bin-file") == 0) {
 			curr->type = SEQUENCE_ELEMENT_TYPE_CSET_BIN_FILE;
@@ -363,6 +648,68 @@ static int parse_sequence(snd_use_case_mgr_t *uc_mgr ATTRIBUTE_UNUSED,
 
 	return 0;
 }
+
+
+/*zedong parse enadev/disdev */
+
+static int parse_include_dev(snd_use_case_mgr_t *uc_mgr,snd_config_t *cfg,
+			const char *cmd,const char * SectionDecice_include_name,
+			struct sequence_element *curr)
+{
+	struct use_case_verb *verb;
+	
+	/* allocate verb */
+	verb = calloc(1, sizeof(struct use_case_verb));
+	if (verb == NULL)
+		return -ENOMEM;
+	/*
+	INIT_LIST_HEAD(&verb->enable_list);
+	INIT_LIST_HEAD(&verb->disable_list);
+	INIT_LIST_HEAD(&verb->transition_list);
+	INIT_LIST_HEAD(&verb->device_list);
+	INIT_LIST_HEAD(&verb->modifier_list);
+	INIT_LIST_HEAD(&verb->value_list);
+	list_add_tail(&uc_mgr->verb_list,&verb->list);
+	*/
+
+	/* allocate device */
+	struct use_case_device *device;
+	device = calloc(1, sizeof(*device));
+	if (device == NULL)
+		return -ENOMEM;
+	/*INIT_LIST_HEAD(&device->enable_list);
+	INIT_LIST_HEAD(&device->disable_list);
+	INIT_LIST_HEAD(&device->transition_list);
+	INIT_LIST_HEAD(&device->dev_list.list);
+	INIT_LIST_HEAD(&device->value_list);
+	list_add_tail(&verb->device_list,&device->list);
+	*/
+	
+	struct list_head *pos, *npos, *base;
+	struct list_head *pos_child, *npos_childe, *base_child;
+	
+
+	base = &tplg->child_cfg_list;
+	list_for_each_safe(pos, npos, base) {
+		verb = list_entry(pos, struct use_case_verb, device_list);
+
+		base_child=&verb->device_list;
+		list_for_each_safe(pos_child, npos_child, base_child) {
+			device = list_entry(pos, struct use_case_device, list);
+			if (strcmp(device->name,SectionDecice_include_name) ==0) {
+				if (strcmp(cmd,"enadev") == 0) {
+					list_add_tail(&device_enable_list,curr->list);
+				}
+				if (strcmp(cmd,"disdev") == 0) {
+					list_add_tail(&device_disable_list,curr->list);
+				}
+			}
+		}
+	}
+		
+}
+
+
 
 /*
  * Parse values.
@@ -1002,6 +1349,18 @@ static int parse_verb_file(snd_use_case_mgr_t *uc_mgr,
 					     parse_modifier_name, verb, NULL);
 			if (err < 0) {
 				uc_error("error: %s failed to parse modifier",
+						file);
+				return err;
+			}
+			continue;
+		}
+		
+		/* zedong find include sections and parse them */
+		if (strcmp(id, "SectionInclude") == 0) {
+			err = parse_compound(uc_mgr, n,
+					     ucm_parse_include_file, verb, NULL);
+			if (err < 0) {
+				uc_error("error: %s failed to parse include",
 						file);
 				return err;
 			}
